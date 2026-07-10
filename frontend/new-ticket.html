@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Avvikelserapportering</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#212427" />
+  <link rel="icon" href="/assets/img/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/img/icon-192.png" />
+  <link rel="stylesheet" href="/assets/css/styles.css" />
+</head>
+<body>
+  <div class="page" id="page">
+    <div id="formView">
+      <h1 data-i18n="new_ticket_title"></h1>
+
+      <div class="field">
+        <span class="field-label" data-i18n="field_type"></span>
+        <div class="pill-group">
+          <input type="radio" name="type" id="type_cc" value="customer_complaint" class="pill-input" />
+          <label for="type_cc" class="pill-label" data-i18n="type_customer_complaint"></label>
+
+          <input type="radio" name="type" id="type_internal" value="internal" class="pill-input" checked />
+          <label for="type_internal" class="pill-label" data-i18n="type_internal"></label>
+        </div>
+      </div>
+
+      <div class="field" id="subtypeField">
+        <span class="field-label" data-i18n="field_subtype"></span>
+        <div class="tile-group">
+          <input type="radio" name="subtype" id="subtype_dev" value="deviation" class="tile-input" checked />
+          <label for="subtype_dev" class="tile-label">
+            <span data-i18n="subtype_deviation"></span>
+            <span class="pill-hint" data-i18n="subtype_deviation_hint"></span>
+          </label>
+
+          <input type="radio" name="subtype" id="subtype_dis" value="disruption" class="tile-input" />
+          <label for="subtype_dis" class="tile-label">
+            <span data-i18n="subtype_disruption"></span>
+            <span class="pill-hint" data-i18n="subtype_disruption_hint"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="titleInput" data-i18n="field_title"></label>
+        <input type="text" id="titleInput" data-i18n-placeholder="field_title_placeholder" />
+      </div>
+
+      <div class="field">
+        <label for="descInput" data-i18n="field_description"></label>
+        <textarea id="descInput" data-i18n-placeholder="field_description_placeholder"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="deptSelect" data-i18n="field_department"></label>
+        <select id="deptSelect"></select>
+        <button type="button" class="link-btn" id="addDeptToggle" data-i18n="add_department"></button>
+        <div id="addDeptRow" style="display:none; margin-top:8px; gap:8px;">
+          <input type="text" id="newDeptInput" data-i18n-placeholder="add_department_placeholder" style="flex:1; border:1px solid var(--grey-border); border-radius:8px; padding:10px;" />
+          <button type="button" class="btn btn-secondary" id="addDeptBtn" style="width:auto;" data-i18n="save"></button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="orgSelect" data-i18n="field_organization"></label>
+        <select id="orgSelect"></select>
+      </div>
+
+      <div class="field">
+        <label for="reporterInput" data-i18n="field_reporter"></label>
+        <input type="text" id="reporterInput" data-i18n-placeholder="field_reporter_placeholder" />
+      </div>
+
+      <div class="field">
+        <span class="field-label" data-i18n="field_attachments"></span>
+        <div class="btn-row">
+          <button type="button" class="btn btn-secondary" id="photoBtn" data-i18n="attach_photo"></button>
+          <button type="button" class="btn btn-secondary" id="fileBtn" data-i18n="attach_file"></button>
+        </div>
+        <input type="file" id="photoInput" accept="image/*" capture="environment" multiple style="display:none" />
+        <input type="file" id="fileInput" multiple style="display:none" />
+        <div class="thumb-row" id="thumbRow"></div>
+      </div>
+
+      <div id="formError" class="error-text" style="display:none"></div>
+
+      <button class="btn btn-primary" id="submitBtn" data-i18n="submit_ticket"></button>
+    </div>
+
+    <div id="successView" style="display:none">
+      <div class="success-box">
+        <div class="checkmark">✓</div>
+        <h1 data-i18n="ticket_created_title"></h1>
+        <p class="subtitle" data-i18n="ticket_created_body"></p>
+        <div class="ticket-no-display" id="createdTicketNo"></div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="viewTicketBtn" data-i18n="view_ticket"></button>
+          <button class="btn btn-primary" id="newAnotherBtn" data-i18n="new_another"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/assets/js/i18n.js"></script>
+  <script src="/assets/js/ui.js"></script>
+  <script src="/assets/js/api.js"></script>
+  <script src="/assets/js/nav.js"></script>
+  <script>
+    let selectedFiles = [];
+    let meta = { organizations: [], departments: [] };
+    let lastCreatedId = null;
+
+    function updateSubtypeVisibility() {
+      const isInternal = document.getElementById("type_internal").checked;
+      document.getElementById("subtypeField").style.display = isInternal ? "" : "none";
+    }
+
+    function renderThumbs() {
+      const row = document.getElementById("thumbRow");
+      row.innerHTML = "";
+      selectedFiles.forEach((file, idx) => {
+        const div = document.createElement("div");
+        div.className = "thumb";
+        if (file.type && file.type.startsWith("image/")) {
+          const img = document.createElement("img");
+          img.src = URL.createObjectURL(file);
+          div.appendChild(img);
+        } else {
+          const span = document.createElement("div");
+          span.className = "thumb-file";
+          span.textContent = "📎";
+          div.appendChild(span);
+        }
+        const rm = document.createElement("button");
+        rm.className = "thumb-remove";
+        rm.textContent = "×";
+        rm.type = "button";
+        rm.addEventListener("click", () => {
+          selectedFiles.splice(idx, 1);
+          renderThumbs();
+        });
+        div.appendChild(rm);
+        row.appendChild(div);
+      });
+    }
+
+    function populateDepartments(selectedId) {
+      const sel = document.getElementById("deptSelect");
+      sel.innerHTML = meta.departments
+        .map((d) => `<option value="${d.id}">${I18n.deptLabel(d.name)}</option>`)
+        .join("");
+      if (selectedId) sel.value = selectedId;
+    }
+
+    function resetForm() {
+      document.getElementById("type_internal").checked = true;
+      document.getElementById("subtype_dev").checked = true;
+      updateSubtypeVisibility();
+      document.getElementById("titleInput").value = "";
+      document.getElementById("descInput").value = "";
+      selectedFiles = [];
+      renderThumbs();
+      document.getElementById("formError").style.display = "none";
+      document.getElementById("successView").style.display = "none";
+      document.getElementById("formView").style.display = "";
+    }
+
+    async function loadMeta() {
+      meta = await Api.get("/meta");
+      populateDepartments();
+      const orgSelect = document.getElementById("orgSelect");
+      orgSelect.innerHTML = meta.organizations.map((o) => `<option value="${o.id}">${o.name}</option>`).join("");
+      const prefs = Prefs.get();
+      if (prefs.organizationId) orgSelect.value = prefs.organizationId;
+    }
+
+    async function submitTicket() {
+      const errorEl = document.getElementById("formError");
+      errorEl.style.display = "none";
+      const type = document.querySelector('input[name="type"]:checked').value;
+      const subtype = type === "internal" ? document.querySelector('input[name="subtype"]:checked').value : "";
+      const title = document.getElementById("titleInput").value.trim();
+      const description = document.getElementById("descInput").value.trim();
+      const departmentId = document.getElementById("deptSelect").value;
+      const organizationId = document.getElementById("orgSelect").value;
+      const reporterName = document.getElementById("reporterInput").value.trim();
+
+      if (!title || !reporterName || !departmentId || !organizationId) {
+        errorEl.textContent = I18n.t("required_field");
+        errorEl.style.display = "";
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append("type", type);
+      if (subtype) fd.append("subtype", subtype);
+      fd.append("title", title);
+      fd.append("description", description);
+      fd.append("organization_id", organizationId);
+      fd.append("department_id", departmentId);
+      fd.append("reporter_name", reporterName);
+      fd.append("language", I18n.lang);
+      selectedFiles.forEach((f) => fd.append("files", f));
+
+      const submitBtn = document.getElementById("submitBtn");
+      submitBtn.disabled = true;
+      try {
+        const ticket = await Api.postForm("/tickets", fd);
+        Prefs.set({ lastReporterName: reporterName });
+        lastCreatedId = ticket.id;
+        document.getElementById("createdTicketNo").textContent = ticket.ticket_no;
+        document.getElementById("formView").style.display = "none";
+        document.getElementById("successView").style.display = "";
+      } catch (e) {
+        errorEl.textContent = I18n.t("error_generic");
+        errorEl.style.display = "";
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
+
+    (async function init() {
+      if (requireOnboarding()) return;
+      const prefs = Prefs.get();
+      await I18n.load(prefs.lang);
+      renderShell("new-ticket");
+      I18n.applyToDom();
+
+      if (prefs.lastReporterName) document.getElementById("reporterInput").value = prefs.lastReporterName;
+
+      updateSubtypeVisibility();
+      document.querySelectorAll('input[name="type"]').forEach((el) => el.addEventListener("change", updateSubtypeVisibility));
+
+      document.getElementById("photoBtn").addEventListener("click", () => document.getElementById("photoInput").click());
+      document.getElementById("fileBtn").addEventListener("click", () => document.getElementById("fileInput").click());
+      document.getElementById("photoInput").addEventListener("change", (e) => {
+        selectedFiles = selectedFiles.concat(Array.from(e.target.files));
+        renderThumbs();
+        e.target.value = "";
+      });
+      document.getElementById("fileInput").addEventListener("change", (e) => {
+        selectedFiles = selectedFiles.concat(Array.from(e.target.files));
+        renderThumbs();
+        e.target.value = "";
+      });
+
+      document.getElementById("addDeptToggle").addEventListener("click", () => {
+        const row = document.getElementById("addDeptRow");
+        row.style.display = row.style.display === "none" ? "flex" : "none";
+      });
+      document.getElementById("addDeptBtn").addEventListener("click", async () => {
+        const name = document.getElementById("newDeptInput").value.trim();
+        if (!name) return;
+        const fd = new FormData();
+        fd.append("name", name);
+        const res = await Api.postForm("/departments", fd);
+        meta.departments = res.departments;
+        const newDept = meta.departments.find((d) => d.name === name);
+        populateDepartments(newDept ? newDept.id : undefined);
+        document.getElementById("newDeptInput").value = "";
+        document.getElementById("addDeptRow").style.display = "none";
+      });
+
+      document.getElementById("submitBtn").addEventListener("click", submitTicket);
+      document.getElementById("viewTicketBtn").addEventListener("click", () => {
+        window.location.href = `/ticket-detail.html?id=${lastCreatedId}`;
+      });
+      document.getElementById("newAnotherBtn").addEventListener("click", resetForm);
+
+      await loadMeta();
+      registerServiceWorker();
+    })();
+  </script>
+</body>
+</html>

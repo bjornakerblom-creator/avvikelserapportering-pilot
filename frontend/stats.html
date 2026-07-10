@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Avvikelserapportering</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#212427" />
+  <link rel="icon" href="/assets/img/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/img/icon-192.png" />
+  <link rel="stylesheet" href="/assets/css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+  <div class="page" id="page">
+    <div id="pinView" class="page centered no-nav" style="position:static; min-height:auto; padding:0;">
+      <h1 data-i18n="stats_title"></h1>
+      <p class="subtitle" data-i18n="pin_prompt"></p>
+      <div class="field">
+        <input type="password" id="pinInput" data-i18n-placeholder="pin_placeholder" />
+      </div>
+      <div id="pinError" class="error-text" style="display:none" data-i18n="wrong_pin"></div>
+      <button class="btn btn-primary" id="unlockBtn" data-i18n="unlock"></button>
+    </div>
+
+    <div id="statsView" style="display:none">
+      <h1 data-i18n="stats_title"></h1>
+
+      <div class="card">
+        <div class="field">
+          <label data-i18n="filter_date_from"></label>
+          <input type="date" id="dateFrom" />
+        </div>
+        <div class="field">
+          <label data-i18n="filter_date_to"></label>
+          <input type="date" id="dateTo" />
+        </div>
+        <div class="field">
+          <label data-i18n="filter_organization"></label>
+          <select id="orgFilter"></select>
+        </div>
+        <div class="field">
+          <label data-i18n="filter_department"></label>
+          <select id="deptFilter"></select>
+        </div>
+        <div class="field">
+          <label data-i18n="filter_type"></label>
+          <select id="typeFilter">
+            <option value="" data-i18n="status_all"></option>
+            <option value="customer_complaint" data-i18n="type_customer_complaint"></option>
+            <option value="internal" data-i18n="type_internal"></option>
+          </select>
+        </div>
+        <div class="field">
+          <label data-i18n="filter_status"></label>
+          <select id="statusFilter">
+            <option value="" data-i18n="status_all"></option>
+            <option value="open" data-i18n="status_open"></option>
+            <option value="closed" data-i18n="status_closed"></option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="applyBtn" data-i18n="apply_filters"></button>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-tile"><div class="kpi-value" id="kpiTotal">-</div><div class="kpi-label" data-i18n="total_tickets"></div></div>
+        <div class="kpi-tile"><div class="kpi-value" id="kpiOpen">-</div><div class="kpi-label" data-i18n="open_tickets"></div></div>
+        <div class="kpi-tile"><div class="kpi-value" id="kpiClosed">-</div><div class="kpi-label" data-i18n="closed_tickets"></div></div>
+        <div class="kpi-tile"><div class="kpi-value" id="kpiAvg">-</div><div class="kpi-label" data-i18n="avg_resolution"></div></div>
+      </div>
+
+      <div class="chart-wrap">
+        <h2 data-i18n="over_time" style="margin-top:0;"></h2>
+        <canvas id="chartTime" height="180"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <h2 data-i18n="by_organization" style="margin-top:0;"></h2>
+        <canvas id="chartOrg" height="180"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <h2 data-i18n="by_department" style="margin-top:0;"></h2>
+        <canvas id="chartDept" height="180"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <h2 data-i18n="by_type" style="margin-top:0;"></h2>
+        <canvas id="chartType" height="180"></canvas>
+      </div>
+
+      <button class="btn btn-secondary" id="exportBtn" data-i18n="export_csv"></button>
+    </div>
+  </div>
+
+  <script src="/assets/js/i18n.js"></script>
+  <script src="/assets/js/ui.js"></script>
+  <script src="/assets/js/api.js"></script>
+  <script src="/assets/js/nav.js"></script>
+  <script>
+    let meta = { organizations: [], departments: [] };
+    let charts = {};
+
+    function currentFilters() {
+      return {
+        date_from: document.getElementById("dateFrom").value,
+        date_to: document.getElementById("dateTo").value,
+        organization_id: document.getElementById("orgFilter").value,
+        department_id: document.getElementById("deptFilter").value,
+        type: document.getElementById("typeFilter").value,
+        status: document.getElementById("statusFilter").value,
+      };
+    }
+
+    function typeChartLabel(label) {
+      if (label === "customer_complaint") return I18n.t("type_customer_complaint");
+      if (label === "deviation") return I18n.t("subtype_deviation");
+      if (label === "disruption") return I18n.t("subtype_disruption");
+      return label;
+    }
+
+    function upsertChart(key, canvasId, config) {
+      if (typeof Chart === "undefined") return;
+      if (charts[key]) charts[key].destroy();
+      charts[key] = new Chart(document.getElementById(canvasId), config);
+    }
+
+    const YELLOW = "#e0ff00";
+    const DARK = "#212427";
+
+    async function loadStats() {
+      const data = await Api.get("/stats", currentFilters());
+      document.getElementById("kpiTotal").textContent = data.total;
+      document.getElementById("kpiOpen").textContent = data.open;
+      document.getElementById("kpiClosed").textContent = data.closed;
+      document.getElementById("kpiAvg").textContent = data.avg_resolution_days ?? "-";
+
+      const countAxis = { ticks: { precision: 0 }, beginAtZero: true };
+
+      upsertChart("time", "chartTime", {
+        type: "line",
+        data: {
+          labels: data.timeseries.map((r) => r.period),
+          datasets: [{ label: I18n.t("over_time"), data: data.timeseries.map((r) => r.count), borderColor: DARK, backgroundColor: YELLOW, tension: 0.2 }],
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: countAxis } },
+      });
+      upsertChart("org", "chartOrg", {
+        type: "bar",
+        data: { labels: data.by_organization.map((r) => r.label), datasets: [{ data: data.by_organization.map((r) => r.count), backgroundColor: YELLOW, borderColor: DARK, borderWidth: 1 }] },
+        options: { plugins: { legend: { display: false } }, scales: { y: countAxis } },
+      });
+      upsertChart("dept", "chartDept", {
+        type: "bar",
+        data: { labels: data.by_department.map((r) => I18n.deptLabel(r.label)), datasets: [{ data: data.by_department.map((r) => r.count), backgroundColor: YELLOW, borderColor: DARK, borderWidth: 1 }] },
+        options: { indexAxis: "y", plugins: { legend: { display: false } }, scales: { x: countAxis } },
+      });
+      upsertChart("type", "chartType", {
+        type: "doughnut",
+        data: { labels: data.by_type.map((r) => typeChartLabel(r.label)), datasets: [{ data: data.by_type.map((r) => r.count), backgroundColor: [YELLOW, DARK, "#9a9ea3", "#c0392b"] }] },
+      });
+    }
+
+    async function loadFilterOptions() {
+      meta = await Api.get("/meta");
+      document.getElementById("orgFilter").innerHTML =
+        `<option value="" data-i18n="filter_organization"></option>` + meta.organizations.map((o) => `<option value="${o.id}">${o.name}</option>`).join("");
+      document.getElementById("deptFilter").innerHTML =
+        `<option value="" data-i18n="filter_department"></option>` + meta.departments.map((d) => `<option value="${d.id}">${I18n.deptLabel(d.name)}</option>`).join("");
+      I18n.applyToDom(document.getElementById("orgFilter"));
+      I18n.applyToDom(document.getElementById("deptFilter"));
+    }
+
+    (async function init() {
+      if (requireOnboarding()) return;
+      const prefs = Prefs.get();
+      await I18n.load(prefs.lang);
+      renderShell("stats");
+      I18n.applyToDom();
+
+      const unlocked = sessionStorage.getItem("statsUnlocked") === "1";
+      if (unlocked) {
+        document.getElementById("pinView").style.display = "none";
+        document.getElementById("statsView").style.display = "";
+      }
+
+      document.getElementById("unlockBtn").addEventListener("click", async () => {
+        const pin = document.getElementById("pinInput").value.trim();
+        const fd = new FormData();
+        fd.append("pin", pin);
+        const res = await Api.postForm("/stats/auth", fd);
+        if (res.ok) {
+          sessionStorage.setItem("statsUnlocked", "1");
+          document.getElementById("pinView").style.display = "none";
+          document.getElementById("statsView").style.display = "";
+          await loadFilterOptions();
+          await loadStats();
+        } else {
+          document.getElementById("pinError").style.display = "";
+        }
+      });
+
+      document.getElementById("applyBtn").addEventListener("click", loadStats);
+      document.getElementById("exportBtn").addEventListener("click", () => {
+        window.open(Api.exportCsvUrl(currentFilters()), "_blank");
+      });
+
+      if (unlocked) {
+        await loadFilterOptions();
+        await loadStats();
+      }
+      registerServiceWorker();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Avvikelserapportering</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#212427" />
+  <link rel="icon" href="/assets/img/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/img/icon-192.png" />
+  <link rel="stylesheet" href="/assets/css/styles.css" />
+</head>
+<body>
+  <div class="page" id="page">
+    <button class="link-btn" id="backBtn" data-i18n="back"></button>
+
+    <div id="notFoundView" style="display:none" class="empty-state" data-i18n="not_found"></div>
+
+    <div id="detailView" style="display:none">
+      <div class="card">
+        <div class="ticket-item-top">
+          <span class="ticket-no" id="ticketNo"></span>
+          <span class="badge" id="statusBadge"></span>
+        </div>
+        <div class="ticket-title" id="ticketTitle" style="font-size:19px; margin-top:6px;"></div>
+        <div class="ticket-meta" style="margin-top:8px;">
+          <span id="typeLabel"></span>
+          <span id="orgLabel"></span>
+          <span id="deptLabel"></span>
+        </div>
+        <p id="descText" style="margin-top:12px; white-space:pre-wrap; font-size:14px;"></p>
+        <div style="font-size:12px; color:var(--grey-mid); margin-top:10px;">
+          <div><span data-i18n="registered_by"></span>: <span id="reporterName"></span></div>
+          <div><span data-i18n="registered_on"></span>: <span id="createdAt"></span></div>
+          <div id="closedRow" style="display:none;"><span data-i18n="closed_on"></span>: <span id="closedAt"></span></div>
+        </div>
+      </div>
+
+      <div class="card" id="attachmentsCard">
+        <h2 data-i18n="attachments_title"></h2>
+        <div class="thumb-row" id="imageThumbs"></div>
+        <div id="fileLinks"></div>
+      </div>
+
+      <div class="card">
+        <button class="btn btn-danger" id="closeBtn" data-i18n="close_ticket"></button>
+        <button class="btn btn-secondary" id="reopenBtn" data-i18n="reopen_ticket" style="display:none;"></button>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="updates_title"></h2>
+        <div id="updatesList"></div>
+        <div class="field" style="margin-top:14px;">
+          <label for="updateAuthor" data-i18n="field_reporter"></label>
+          <input type="text" id="updateAuthor" />
+        </div>
+        <div class="field">
+          <textarea id="updateText" data-i18n-placeholder="update_placeholder"></textarea>
+        </div>
+        <button class="btn btn-primary" id="addUpdateBtn" data-i18n="add_update"></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/assets/js/i18n.js"></script>
+  <script src="/assets/js/ui.js"></script>
+  <script src="/assets/js/api.js"></script>
+  <script src="/assets/js/nav.js"></script>
+  <script>
+    let ticket = null;
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str || "";
+      return div.innerHTML;
+    }
+
+    function renderTicket() {
+      document.getElementById("ticketNo").textContent = ticket.ticket_no;
+      document.getElementById("ticketTitle").textContent = ticket.title;
+      document.getElementById("descText").textContent = ticket.description || "";
+      document.getElementById("typeLabel").textContent = typeBadgeLabel(ticket.type, ticket.subtype);
+      document.getElementById("orgLabel").textContent = ticket.organization_name;
+      document.getElementById("deptLabel").textContent = I18n.deptLabel(ticket.department_name);
+      document.getElementById("reporterName").textContent = ticket.reporter_name;
+      document.getElementById("createdAt").textContent = formatDate(ticket.created_at);
+
+      const badge = document.getElementById("statusBadge");
+      const isOpen = ticket.status === "open";
+      badge.textContent = isOpen ? I18n.t("badge_open") : I18n.t("badge_closed");
+      badge.className = "badge " + (isOpen ? "badge-open" : "badge-closed");
+      document.getElementById("closeBtn").style.display = isOpen ? "" : "none";
+      document.getElementById("reopenBtn").style.display = isOpen ? "none" : "";
+      document.getElementById("closedRow").style.display = isOpen ? "none" : "";
+      if (!isOpen) document.getElementById("closedAt").textContent = formatDate(ticket.closed_at);
+
+      const images = ticket.attachments.filter((a) => a.kind === "image");
+      const others = ticket.attachments.filter((a) => a.kind !== "image");
+      document.getElementById("imageThumbs").innerHTML = images
+        .map(
+          (a) => `<a class="thumb" href="${Api.attachmentUrl(ticket.id, a.id)}" target="_blank" rel="noopener">
+            <img src="${Api.attachmentUrl(ticket.id, a.id)}" alt="${escapeHtml(a.filename)}" />
+          </a>`
+        )
+        .join("");
+      document.getElementById("fileLinks").innerHTML = others
+        .map(
+          (a) => `<a class="attachment-link" href="${Api.attachmentUrl(ticket.id, a.id)}" target="_blank" rel="noopener">
+            📎 ${escapeHtml(a.filename)}
+          </a>`
+        )
+        .join("");
+      document.getElementById("attachmentsCard").style.display = ticket.attachments.length ? "" : "none";
+
+      document.getElementById("updatesList").innerHTML = ticket.updates
+        .map(
+          (u) => `<div class="update-item">
+            <div class="update-author">${escapeHtml(u.author)} <span class="update-date">${formatDate(u.created_at)}</span></div>
+            <div class="update-text">${escapeHtml(u.text)}</div>
+          </div>`
+        )
+        .join("");
+    }
+
+    async function loadTicket(id) {
+      try {
+        ticket = await Api.get(`/tickets/${id}`);
+        document.getElementById("detailView").style.display = "";
+        renderTicket();
+      } catch (e) {
+        document.getElementById("notFoundView").style.display = "";
+      }
+    }
+
+    function currentAuthor() {
+      const val = document.getElementById("updateAuthor").value.trim();
+      return val || Prefs.get().lastReporterName || "";
+    }
+
+    (async function init() {
+      if (requireOnboarding()) return;
+      const prefs = Prefs.get();
+      await I18n.load(prefs.lang);
+      renderShell("tickets");
+      I18n.applyToDom();
+
+      document.getElementById("updateAuthor").value = prefs.lastReporterName || "";
+      document.getElementById("backBtn").addEventListener("click", () => window.location.href = "/tickets.html");
+
+      const id = new URLSearchParams(window.location.search).get("id");
+      if (!id) {
+        document.getElementById("notFoundView").style.display = "";
+        return;
+      }
+
+      document.getElementById("closeBtn").addEventListener("click", async () => {
+        const author = currentAuthor();
+        if (!author) { toast(I18n.t("required_field")); return; }
+        const fd = new FormData();
+        fd.append("author", author);
+        ticket = await Api.postForm(`/tickets/${id}/close`, fd);
+        renderTicket();
+      });
+      document.getElementById("reopenBtn").addEventListener("click", async () => {
+        const author = currentAuthor();
+        if (!author) { toast(I18n.t("required_field")); return; }
+        const fd = new FormData();
+        fd.append("author", author);
+        ticket = await Api.postForm(`/tickets/${id}/reopen`, fd);
+        renderTicket();
+      });
+      document.getElementById("addUpdateBtn").addEventListener("click", async () => {
+        const author = currentAuthor();
+        const text = document.getElementById("updateText").value.trim();
+        if (!author || !text) { toast(I18n.t("required_field")); return; }
+        const fd = new FormData();
+        fd.append("author", author);
+        fd.append("text", text);
+        ticket = await Api.postForm(`/tickets/${id}/updates`, fd);
+        Prefs.set({ lastReporterName: author });
+        document.getElementById("updateText").value = "";
+        renderTicket();
+      });
+
+      await loadTicket(id);
+      registerServiceWorker();
+    })();
+  </script>
+</body>
+</html>

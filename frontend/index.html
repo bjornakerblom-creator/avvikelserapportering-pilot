@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Avvikelserapportering</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#212427" />
+  <link rel="icon" href="/assets/img/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/img/icon-192.png" />
+  <link rel="stylesheet" href="/assets/css/styles.css" />
+</head>
+<body>
+  <div class="page centered no-nav" id="page">
+    <div class="logo-block"><img src="/assets/img/logo-payoff-grey.png" alt="Saferoad" /></div>
+    <h1 data-i18n="onboarding_title"></h1>
+    <p class="subtitle" data-i18n="onboarding_subtitle"></p>
+
+    <div class="field">
+      <label data-i18n="choose_language"></label>
+      <select id="langSelect"></select>
+    </div>
+
+    <div class="field">
+      <label data-i18n="choose_organization"></label>
+      <select id="orgSelect"></select>
+    </div>
+
+    <button class="btn btn-primary" id="continueBtn" data-i18n="continue"></button>
+  </div>
+
+  <script src="/assets/js/i18n.js"></script>
+  <script src="/assets/js/ui.js"></script>
+  <script>
+    const LANGS = [
+      { code: "nl", label: "Nederlands" },
+      { code: "en", label: "English" },
+      { code: "ro", label: "Română" },
+      { code: "sv", label: "Svenska" },
+      { code: "no", label: "Norsk" },
+    ];
+
+    function browserDefaultLang() {
+      const nav = (navigator.language || "en").slice(0, 2).toLowerCase();
+      return LANGS.some((l) => l.code === nav) ? nav : "en";
+    }
+
+    (async function init() {
+      const prefs = Prefs.get();
+
+      const langSelect = document.getElementById("langSelect");
+      langSelect.innerHTML = LANGS.map((l) => `<option value="${l.code}">${l.label}</option>`).join("");
+      langSelect.value = prefs.lang || browserDefaultLang();
+
+      await I18n.load(langSelect.value);
+      I18n.applyToDom();
+
+      langSelect.addEventListener("change", async () => {
+        await I18n.load(langSelect.value);
+        I18n.applyToDom();
+      });
+
+      let orgs = [];
+      try {
+        const meta = await fetch("/api/meta").then((r) => r.json());
+        orgs = meta.organizations;
+      } catch (e) {
+        orgs = [];
+      }
+      const orgSelect = document.getElementById("orgSelect");
+      orgSelect.innerHTML = orgs.map((o) => `<option value="${o.id}">${o.name}</option>`).join("");
+      if (prefs.organizationId) orgSelect.value = prefs.organizationId;
+
+      document.getElementById("continueBtn").addEventListener("click", () => {
+        if (!orgSelect.value) return;
+        Prefs.set({ lang: langSelect.value, organizationId: Number(orgSelect.value) });
+        window.location.href = "/new-ticket.html";
+      });
+
+      registerServiceWorker();
+    })();
+  </script>
+</body>
+</html>

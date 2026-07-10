@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Avvikelserapportering</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#212427" />
+  <link rel="icon" href="/assets/img/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/img/icon-192.png" />
+  <link rel="stylesheet" href="/assets/css/styles.css" />
+</head>
+<body>
+  <div class="page" id="page">
+    <h1 data-i18n="search_title"></h1>
+
+    <div class="search-box">
+      <input type="text" id="searchInput" data-i18n-placeholder="search_placeholder" />
+    </div>
+
+    <div class="filter-row">
+      <select id="statusFilter">
+        <option value="" data-i18n="status_all"></option>
+        <option value="open" data-i18n="status_open"></option>
+        <option value="closed" data-i18n="status_closed"></option>
+      </select>
+      <select id="typeFilter">
+        <option value="" data-i18n="filter_type"></option>
+        <option value="customer_complaint" data-i18n="type_customer_complaint"></option>
+        <option value="internal" data-i18n="type_internal"></option>
+      </select>
+      <select id="deptFilter"></select>
+      <select id="orgFilter"></select>
+    </div>
+
+    <div id="resultsCount" class="subtitle"></div>
+    <div id="list"></div>
+    <div id="emptyState" class="empty-state" style="display:none" data-i18n="no_results"></div>
+  </div>
+
+  <script src="/assets/js/i18n.js"></script>
+  <script src="/assets/js/ui.js"></script>
+  <script src="/assets/js/api.js"></script>
+  <script src="/assets/js/nav.js"></script>
+  <script>
+    let meta = { organizations: [], departments: [] };
+    let searchTimer = null;
+
+    function renderList(items) {
+      const list = document.getElementById("list");
+      const empty = document.getElementById("emptyState");
+      document.getElementById("resultsCount").textContent = I18n.t("results_count", { count: items.length });
+      if (items.length === 0) {
+        list.innerHTML = "";
+        empty.style.display = "";
+        return;
+      }
+      empty.style.display = "none";
+      list.innerHTML = items
+        .map((t) => {
+          const badgeClass = t.status === "open" ? "badge-open" : "badge-closed";
+          const statusLabel = t.status === "open" ? I18n.t("badge_open") : I18n.t("badge_closed");
+          return `
+          <a class="card ticket-item" href="/ticket-detail.html?id=${t.id}">
+            <div class="ticket-item-top">
+              <span class="ticket-no">${t.ticket_no}</span>
+              <span class="badge ${badgeClass}">${statusLabel}</span>
+            </div>
+            <div class="ticket-title">${escapeHtml(t.title)}</div>
+            <div class="ticket-meta">
+              <span>${typeBadgeLabel(t.type, t.subtype)}</span>
+              <span>${escapeHtml(t.organization_name)}</span>
+              <span>${I18n.deptLabel(t.department_name)}</span>
+              <span>${formatDate(t.created_at)}</span>
+            </div>
+          </a>`;
+        })
+        .join("");
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str || "";
+      return div.innerHTML;
+    }
+
+    async function runSearch() {
+      const params = {
+        q: document.getElementById("searchInput").value.trim(),
+        status: document.getElementById("statusFilter").value,
+        type: document.getElementById("typeFilter").value,
+        department_id: document.getElementById("deptFilter").value,
+        organization_id: document.getElementById("orgFilter").value,
+        limit: 100,
+      };
+      try {
+        const res = await Api.get("/tickets", params);
+        renderList(res.items);
+      } catch (e) {
+        toast(I18n.t("error_generic"));
+      }
+    }
+
+    async function loadFilters() {
+      meta = await Api.get("/meta");
+      const deptFilter = document.getElementById("deptFilter");
+      deptFilter.innerHTML =
+        `<option value="" data-i18n="filter_department"></option>` +
+        meta.departments.map((d) => `<option value="${d.id}">${I18n.deptLabel(d.name)}</option>`).join("");
+      const orgFilter = document.getElementById("orgFilter");
+      orgFilter.innerHTML =
+        `<option value="" data-i18n="filter_organization"></option>` +
+        meta.organizations.map((o) => `<option value="${o.id}">${o.name}</option>`).join("");
+      I18n.applyToDom(deptFilter);
+      I18n.applyToDom(orgFilter);
+    }
+
+    (async function init() {
+      if (requireOnboarding()) return;
+      const prefs = Prefs.get();
+      await I18n.load(prefs.lang);
+      renderShell("tickets");
+      I18n.applyToDom();
+
+      await loadFilters();
+
+      document.getElementById("searchInput").addEventListener("input", () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(runSearch, 300);
+      });
+      ["statusFilter", "typeFilter", "deptFilter", "orgFilter"].forEach((id) =>
+        document.getElementById(id).addEventListener("change", runSearch)
+      );
+
+      await runSearch();
+      registerServiceWorker();
+    })();
+  </script>
+</body>
+</html>
