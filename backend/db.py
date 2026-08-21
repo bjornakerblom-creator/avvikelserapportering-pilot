@@ -77,8 +77,17 @@ CREATE TABLE IF NOT EXISTS updates (
 
 
 def _data_dir() -> Path:
-    base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-    d = Path(base) / APP_DIR_NAME / "data"
+    # Explicit override (used on Linux hosts like Render, where there is no
+    # %LOCALAPPDATA%) takes priority. Falls back to the Windows-local-data
+    # location used for normal desktop runs, and finally to a plain ./data
+    # folder for any other environment.
+    override = os.environ.get("AVVIKELSER_DATA_DIR")
+    if override:
+        d = Path(override)
+    elif os.environ.get("LOCALAPPDATA"):
+        d = Path(os.environ["LOCALAPPDATA"]) / APP_DIR_NAME / "data"
+    else:
+        d = Path(__file__).resolve().parent.parent / "data"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

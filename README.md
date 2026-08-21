@@ -48,3 +48,20 @@ Detta är en fristående prototyp som körs lokalt. Om det senare visar sig
 finnas behov av att nå appen utanför det lokala nätverket, eller flytta in
 den i Saferoads egen hostingmiljö, är det ett separat beslut som tas med
 IT senare.
+
+## Tillfällig extern testdrift (Render.com)
+
+För att kunna testa på flera privata mobiler (inte bara på samma Wi-Fi) finns
+en `Dockerfile` och `render.yaml` som gör det möjligt att köra appen tillfälligt
+på Render.coms gratisnivå med en riktig https-adress. Detta är **inte** en
+IT-godkänd lösning – bara ett sätt att pilottesta flödet innan ärendet tas
+vidare till IT för riktig hosting.
+
+- Sätt **endast in påhittade/test-ärenden** där, inga riktiga kunduppgifter.
+- Gratisnivån saknar en beständig disk: databasen nollställs varje gång
+  tjänsten startar om (t.ex. efter inaktivitet). Bra för att testa själva
+  flödet, dåligt för att spara data över tid.
+- Datamappen styrs av miljövariabeln `AVVIKELSER_DATA_DIR` (satt till `/data`
+  i containern) – på din vanliga Windows-körning används fortfarande
+  `%LOCALAPPDATA%\Avvikelserapportering\data` som tidigare, ingen skillnad
+  för den dagliga användningen.

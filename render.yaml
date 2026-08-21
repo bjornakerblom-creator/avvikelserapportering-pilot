@@ -1,0 +1,13 @@
+# Render.com Blueprint - lets Render auto-configure the service when this
+# repo is connected via "New +" -> "Blueprint" instead of filling in settings
+# by hand. Free plan, built from the Dockerfile in this repo.
+services:
+  - type: web
+    name: avvikelserapportering
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: AVVIKELSER_DATA_DIR
+        value: /data
+    healthCheckPath: /
